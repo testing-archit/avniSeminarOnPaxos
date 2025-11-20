@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Report: The Paxos Algorithm</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chosen Palette: Warm Neutrals (Grays, Subtle Blue) -->
+    <!-- Application Structure Plan: Designed a 5-tab SPA structure (Problem, Analogy, Simulator, Mechanics, Real World). This non-linear, task-oriented design is better for learning than the original report's linear flow. It isolates intuition (Analogy) from formal rules (Mechanics) and centers the app on an interactive "Simulator" for the Execution Trace, which is the most complex concept. This allows users to explore at their own pace and focus on understanding the *behavior* of the algorithm. -->
+    <!-- Visualization & Content Choices:
+        1.  Report Info: Split-Brain Problem -> Goal: Hook user -> Viz: 2-column HTML/Tailwind diagram (NY/London) -> Interaction: None, static visual -> Justification: Clears up the "why" immediately.
+        2.  Report Info: Wedding Guest Analogy -> Goal: Build intuition -> Viz: Step-by-step text blocks (HTML/Tailwind) -> Interaction: None, simple reading -> Justification: Separates analogy from formal rules.
+        3.  Report Info: Execution Trace -> Goal: Deeply explain race conditions -> Viz: HTML/CSS/JS "Simulator" with 3 Acceptor columns and 2 Proposer states. -> Interaction: "Next/Prev Step" buttons update the state (text, colors, opacity) of each node (div) based on a JS event array. -> Justification: This is the core interactive element. It makes the complex trace digestible and visualizes the state changes, which is impossible in a static paper. (Method: Vanilla JS + Tailwind).
+        4.  Report Info: Algorithm Mechanics -> Goal: Formal reference -> Viz: HTML/Tailwind flowcharts (using flexbox and Unicode arrows) for Phase 1 & 2. -> Interaction: None, static diagrams. -> Justification: Replaces need for Mermaid/SVG, provides clear reference for the rules.
+        5.  Report Info: Raft/Spanner -> Goal: Provide context -> Viz: HTML/Tailwind styled table (Paxos vs. Raft) and text blocks. -> Interaction: None. -> Justification: Standard, clear info presentation.
+        -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .tab-btn.active {
+            border-bottom-color: #2563eb;
+            color: #2563eb;
+            font-weight: 600;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: auto;
+            max-height: 500px;
+        }
+        
+        .node {
+            transition: all 0.3s ease-in-out;
+        }
+        .node-state {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.875rem;
+        }
+        .crashed {
+            opacity: 0.4;
+            background-color: #f3f4f6;
+            border-style: dashed;
+        }
+        .log-highlight {
+            animation: flash 1s ease-in-out;
+        }
+        @keyframes flash {
+            0% { background-color: #dbeafe; }
+            100% { background-color: transparent; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div class="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900">The Paxos Consensus Algorithm</h1>
+            <p class="text-xl text-gray-600 mt-2">An Interactive Guide to Distributed Agreement</p>
+        </header>
+
+        <div class="bg-white rounded-lg shadow-xl p-6 sm:p-8">
+
+            <nav class="border-b border-gray-200 mb-6">
+                <ul class="flex flex-wrap -mb-px text-sm font-medium text-center text-gray-500">
+                    <li>
+                        <button class="tab-btn inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300" data-tab="problem">
+                            The Problem
+                        </button>
+                    </li>
+                    <li>
+                        <button class="tab-btn inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300" data-tab="analogy">
+                            The Analogy
+                        </button>
+                    </li>
+                    <li>
+                        <button class="tab-btn inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300" data-tab="simulator">
+                            Interactive Simulator
+                        </button>
+                    </li>
+                    <li>
+                        <button class="tab-btn inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300" data-tab="mechanics">
+                            The Mechanics
+                        </button>
+                    </li>
+                    <li>
+                        <button class="tab-btn inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300" data-tab="context">
+                            Real World & Context
+                        </button>
+                    </li>
+                </ul>
+            </nav>
+
+            <div>
+                <div id="problem" class="tab-content space-y-4">
+                    <h2 class="text-2xl font-semibold text-gray-900 mb-4">The "Split-Brain" Problem</h2>
+                    <p class="text-gray-700 leading-relaxed">
+                        This section explains the core problem Paxos solves. In distributed computing, servers can fail or lose connection. A "network partition" (like a cut cable) can lead to a "split-brain," where servers diverge and make conflicting decisions, corrupting data.
+                    </p>
+                    <div class="border rounded-lg p-6 bg-gray-50">
+                        <h3 class="font-semibold text-lg text-center mb-4">Bank Example: Alice's $1,000</h3>
+                        <div class="flex flex-col md:flex-row justify-around items-center space-y-4 md:space-y-0 md:space-x-4">
+                            
+                            <div class="w-full md:w-1/3 text-center p-4 bg-white rounded-lg shadow">
+                                <h4 class="font-bold text-lg">New York Server</h4>
+                                <p class="text-sm text-gray-500">10:00 AM</p>
+                                <p class="text-gray-700 mt-2">Alice's Balance: $1,000</p>
+                                <p class="text-red-600 font-medium">Action: Withdraw $1,000</p>
+                                <p class="text-green-600 font-bold mt-2">Result: Approved (New Balance: $0)</p>
+                            </div>
+
+                            <div class="text-gray-400 text-center">
+                                <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m0 0A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
+                                <p class="font-semibold text-red-500">Network Partition</p>
+                                <p class="text-sm">(Servers can't communicate)</p>
+                            </div>
+
+                            <div class="w-full md:w-1/3 text-center p-4 bg-white rounded-lg shadow">
+                                <h4 class="font-bold text-lg">London Server</h4>
+                                <p class="text-sm text-gray-500">10:01 AM</p>
+                                <p class="text-gray-700 mt-2">Alice's Balance: $1,000</p>
+                                <p class="text-red-600 font-medium">Action: Withdraw $1,000</p>
+                                <p class="text-green-600 font-bold mt-2">Result: Approved (New Balance: $0)</p>
+                            </div>
+                        </div>
+                        <div class="text-center mt-6">
+                            <h4 class="text-xl font-bold text-red-700">Data Corruption!</h4>
+                            <p class="text-gray-700">Alice withdrew $2,000 from a $1,000 balance. The servers are now inconsistent. Paxos is the protocol that prevents this by ensuring only *one* transaction is agreed upon first.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="analogy" class="tab-content space-y-4">
+                    <h2 class="text-2xl font-semibold text-gray-900 mb-4">Intuition: The Wedding Guest Analogy</h2>
+                    <p class="text-gray-700 leading-relaxed">
+                        To understand Paxos without complex math, the report uses an analogy. This section outlines that story, which helps build an intuitive mental model for the algorithm's two-phase process.
+                    </p>
+                    <div class="border rounded-lg p-6 bg-gray-50 space-y-6">
+                        <div class="flex items-start space-x-4">
+                            <div class="flex-shrink-0 w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xl font-bold">1</div>
+                            <div>
+                                <h3 class="font-semibold text-lg">Phase 1: Prepare</h3>
+                                <p class="text-gray-700">You text your friends (who have bad cell service): "I suggest 'Chicken' (Proposal #1). Is anyone else speaking?"</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start space-x-4">
+                            <div class="flex-shrink-0 w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xl font-bold">2</div>
+                            <div>
+                                <h3 class="font-semibold text-lg">Phase 2: Promise</h3>
+                                <p class="text-gray-700">Your friends reply: "I haven't heard anyone else. I promise to listen to Proposal #1 and will ignore any earlier proposals."</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start space-x-4">
+                            <div class="flex-shrink-0 w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xl font-bold">3</div>
+                            <div>
+                                <h3 class="font-semibold text-lg">Phase 3: Accept</h3>
+                                <p class="text-gray-700">Once you get a *majority* of promises, you send the final command: "Okay, the meal is Chicken." The friends then accept this value.</p>
+                            </div>
+                        </div>
+                        <div class="border-t pt-4 mt-6">
+                            <h3 class="font-semibold text-lg text-gray-800">The "Safety" Check</h3>
+                            <p class="text-gray-700">If a latecomer tries to suggest 'Beef' (Proposal #2) *after* your friends already promised to listen to Proposal #1, they will reject the 'Beef' proposal because its number is lower. This is how Paxos ensures only one value is chosen.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="simulator" class="tab-content space-y-4">
+                    <h2 class="text-2xl font-semibold text-gray-900 mb-4">Interactive Simulator: Handling Failure</h2>
+                    <p class="text-gray-700 leading-relaxed">
+                        This is the most complex part of Paxos. The report details a "race condition" where two Proposers (P1, P2) try to write different values at the same time, and one (P1) crashes. Use the buttons below to walk through the steps and see how the servers (Acceptors A1, A2, A3) handle the conflict to reach a safe consensus.
+                    </p>
+                    
+                    <div class="chart-container border rounded-lg p-6 bg-white shadow-inner">
+                        <div class="text-center mb-4">
+                            <p class="font-semibold">Goal: Need a majority of 2 out of 3 Acceptors to agree.</p>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div id="p1-node" class="node border-2 border-blue-300 bg-blue-50 rounded-lg p-4">
+                                <h4 class="font-bold text-lg text-blue-800">Proposer P1</h4>
+                                <p class="node-state text-blue-700" id="p1-state">State: Idle</p>
+                                <p class="node-state text-blue-700" id="p1-value">Value: "Blue"</p>
+                            </div>
+                            <div id="p2-node" class="node border-2 border-purple-300 bg-purple-50 rounded-lg p-4">
+                                <h4 class="font-bold text-lg text-purple-800">Proposer P2</h4>
+                                <p class="node-state text-purple-700" id="p2-state">State: Idle</p>
+                                <p class="node-state text-purple-700" id="p2-value">Value: "Red"</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div id="a1-node" class="node border-2 border-gray-300 bg-gray-50 rounded-lg p-4 h-36">
+                                <h4 class="font-bold text-lg text-gray-800">Acceptor A1</h4>
+                                <p class="node-state text-gray-600" id="a1-promise">Promised ID: 0</p>
+                                <p class="node-state text-gray-600" id="a1-accepted-id">Accepted ID: null</p>
+                                <p class="node-state text-gray-600" id="a1-accepted-val">Accepted Val: null</p>
+                            </div>
+                            <div id="a2-node" class="node border-2 border-gray-300 bg-gray-50 rounded-lg p-4 h-36">
+                                <h4 class="font-bold text-lg text-gray-800">Acceptor A2</h4>
+                                <p class="node-state text-gray-600" id="a2-promise">Promised ID: 0</p>
+                                <p class="node-state text-gray-600" id="a2-accepted-id">Accepted ID: null</p>
+                                <p class="node-state text-gray-600" id="a2-accepted-val">Accepted Val: null</p>
+                            </div>
+                            <div id="a3-node" class="node border-2 border-gray-300 bg-gray-50 rounded-lg p-4 h-36">
+                                <h4 class="font-bold text-lg text-gray-800">Acceptor A3</h4>
+                                <p class="node-state text-gray-600" id="a3-promise">Promised ID: 0</p>
+                                <p class="node-state text-gray-600" id="a3-accepted-id">Accepted ID: null</p>
+                                <p class="node-state text-gray-600" id="a3-accepted-val">Accepted Val: null</p>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 bg-gray-800 text-white rounded-lg p-4 font-mono text-sm">
+                            <p class="font-bold mb-2">Event Log:</p>
+                            <p id="sim-log">Press "Next" to start the simulation.</p>
+                        </div>
+
+                        <div class="flex justify-between mt-6">
+                            <button id="prev-step" class="bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-lg shadow hover:bg-gray-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                                Previous
+                            </button>
+                            <span id="step-counter" class="text-gray-600 font-medium self-center">Step 0 / 7</span>
+                            <button id="next-step" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="mechanics" class="tab-content space-y-4">
+                    <h2 class="text-2xl font-semibold text-gray-900 mb-4">The Mechanics: Formal Rules</h2>
+                    <p class="text-gray-700 leading-relaxed">
+                        This section provides the formal definitions from the report. Paxos defines three roles (which can all be run by one server) and operates in two main phases. These diagrams visualize the flow of messages between the roles.
+                    </p>
+                    <div class="space-y-6">
+                        <div class="border rounded-lg p-6 bg-white shadow">
+                            <h3 class="text-xl font-semibold mb-4 text-blue-700">Phase 1: Prepare & Promise (The "Scout" Phase)</h3>
+                            <p class="mb-4 text-gray-600">The Proposer asks for permission to lead a round with a specific ID number $n$.</p>
+                            <div class="flex flex-col sm:flex-row items-center justify-around space-y-4 sm:space-y-0 sm:space-x-4">
+                                <div class="text-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <h4 class="font-bold">Proposer</h4>
+                                    <p class="text-sm">Picks ID $n$</p>
+                                </div>
+                                <div class="text-5xl text-blue-400">&rarr;</div>
+                                <div class="text-center p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <h4 class="font-bold">Acceptors (Majority)</h4>
+                                    <p class="text-sm">Receive `Prepare(n)`</p>
+                                </div>
+                                <div class="text-5xl text-blue-400">&rarr;</div>
+                                <div class="text-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <h4 class="font-bold">Proposer</h4>
+                                    <p class="text-sm">Receives `Promise()`</p>
+                                </div>
+                            </div>
+                            <ul class="list-disc list-inside mt-4 space-y-1 text-gray-700">
+                                <li><b>Acceptor Logic:</b> If $n$ is higher than any ID I've seen, I reply with `Promise()` and pledge to ignore any proposals with an ID less than $n$.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="border rounded-lg p-6 bg-white shadow">
+                            <h3 class="text-xl font-semibold mb-4 text-green-700">Phase 2: Accept & Accepted (The "Command" Phase)</h3>
+                            <p class="mb-4 text-gray-600">If the Proposer gets a majority of promises, it sends the value.</p>
+                            <div class="flex flex-col sm:flex-row items-center justify-around space-y-4 sm:space-y-0 sm:space-x-4">
+                                <div class="text-center p-4 bg-green-50 border border-green-200 rounded-lg">
+                                    <h4 class="font-bold">Proposer</h4>
+                                    <p class="text-sm">Sends `Accept(n, v)`</p>
+                                </div>
+                                <div class="text-5xl text-green-400">&rarr;</div>
+                                <div class="text-center p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <h4 class="font-bold">Acceptors (Majority)</h4>
+                                    <p class="text-sm">Receive `Accept(n, v)`</T>
+                                </div>
+                                <div class="text-5xl text-green-400">&rarr;</div>
+                                <div class="text-center p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <h4 class="font-bold">Learners</h4>
+                                    <p class="text-sm">Record the value</p>
+                                </div>
+                            </div>
+                            <ul class="list-disc list-inside mt-4 space-y-1 text-gray-700">
+                                <li><b>Proposer Logic:</b> If any Acceptors reported an old value in Phase 1, I *must* propose that value $v$. Otherwise, I can use my own.</li>
+                                <li><b>Acceptor Logic:</b> I accept $(n, v)$ as long as I haven't made a promise to a *newer* proposal (with a higher ID).</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="context" class="tab-content space-y-4">
+                    <h2 class="text-2xl font-semibold text-gray-900 mb-4">Real World & Context</h2>
+                    <p class="text-gray-700 leading-relaxed">
+                        This section covers the report's conclusion: why Paxos is important, how it's used in the real world, and how it compares to its well-known alternative, Raft.
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="border rounded-lg p-6 bg-white shadow">
+                            <h3 class="text-xl font-semibold mb-4">Paxos vs. Raft</h3>
+                            <p class="text-gray-600 mb-4">While Paxos is foundational, it's notoriously hard to implement. **Raft** was created in 2013 as an easier-to-understand alternative.</p>
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="p-3 font-semibold">Feature</th>
+                                        <th class="p-3 font-semibold">Paxos</th>
+                                        <th class="p-3 font-semibold">Raft</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="border-b">
+                                        <td class="p-3">Leader Election</td>
+                                        <td class="p-3">Implicit, flexible</td>
+                                        <td class="p-3">Explicit, strong leader</td>
+                                    </tr>
+                                    <tr class="border-b">
+                                        <td class="p-3">Understandability</td>
+                                        <td class="p-3">Difficult</td>
+                                        <td class="p-3">Easier by design</td>
+                                    </tr>
+                                    <tr class="border-b">
+                                        <td class="p-3">Common Use</td>
+                                        <td class="p-3">Google Spanner</td>
+                                        <td class="p-3">Kubernetes (etcd)</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="border rounded-lg p-6 bg-white shadow">
+                            <h3 class="text-xl font-semibold mb-4">Real World Usage: Google Spanner</h3>
+                            <p class="text-gray-600 mb-4">
+                                Paxos is the standard for global-scale systems. Google's **Spanner** database, which operates across datacenters worldwide, uses "Paxos Groups" to manage database shards (pieces of data).
+                            </p>
+                            <p class="text-gray-600">
+                                This allows Spanner to stay consistent and available even if an entire datacenter goes offline. The remaining servers form a majority (a "quorum") and continue to operate, ensuring no data is lost or corrupted.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="border rounded-lg p-6 bg-gray-50 mt-6">
+                        <h3 class="text-xl font-semibold mb-4">Conclusion</h3>
+                        <p class="text-gray-700 leading-relaxed">
+                            Paxos is difficult because it handles the worst-case scenarios of distributed computing. By using proposal numbers to order events logically (not by time), it guarantees that the system will never produce an inconsistent result, even if the network fails. It is the foundation of modern reliable systems.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center mt-8 text-gray-500 text-sm pb-8">
+            <p>Report created by <span class="font-semibold text-gray-700">Avni Saini, S24CSEU1037</span> | Submitted to <a href="https://www.linkedin.com/in/gopal-rawat-timetravelerr/" target="_blank" class="font-semibold text-blue-600 hover:underline">Gopal Rawat Sir</a></p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const tabs = document.querySelectorAll('.tab-btn');
+            const contents = document.querySelectorAll('.tab-content');
+
+            function showTab(tabName) {
+                contents.forEach(content => {
+                    if (content.id === tabName) {
+                        content.classList.add('active');
+                    } else {
+                        content.classList.remove('active');
+                    }
+                });
+                tabs.forEach(tab => {
+                    if (tab.dataset.tab === tabName) {
+                        tab.classList.add('active', 'text-blue-600', 'border-blue-600');
+                    } else {
+                        tab.classList.remove('active', 'text-blue-600', 'border-blue-600');
+                    }
+                });
+            }
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    showTab(tab.dataset.tab);
+                });
+            });
+
+            showTab('problem');
+
+            const simLog = document.getElementById('sim-log');
+            const nextBtn = document.getElementById('next-step');
+            const prevBtn = document.getElementById('prev-step');
+            const stepCounter = document.getElementById('step-counter');
+
+            const p1Node = document.getElementById('p1-node');
+            const p1State = document.getElementById('p1-state');
+            const p2Node = document.getElementById('p2-node');
+            const p2State = document.getElementById('p2-state');
+
+            const a1Promise = document.getElementById('a1-promise');
+            const a1Id = document.getElementById('a1-accepted-id');
+            const a1Val = document.getElementById('a1-accepted-val');
+            
+            const a2Promise = document.getElementById('a2-promise');
+            const a2Id = document.getElementById('a2-accepted-id');
+            const a2Val = document.getElementById('a2-accepted-val');
+
+            const a3Promise = document.getElementById('a3-promise');
+            const a3Id = document.getElementById('a3-accepted-id');
+            const a3Val = document.getElementById('a3-accepted-val');
+
+            let currentStep = 0;
+            const simSteps = [
+                {
+                    log: 'Initial state. Two proposers want to write. P1 has ID 100, P2 has ID 200.',
+                    p1: { state: 'Idle', class: '' },
+                    p2: { state: 'Idle', class: '' },
+                    a1: { promise: 0, id: null, val: null, class: '' },
+                    a2: { promise: 0, id: null, val: null, class: '' },
+                    a3: { promise: 0, id: null, val: null, class: '' }
+                },
+                {
+                    log: 'Step 1: P1 starts. Sends `Prepare(100)` to A1 and A2.',
+                    p1: { state: 'Preparing (ID 100)', class: 'log-highlight' },
+                    p2: { state: 'Idle', class: '' },
+                    a1: { promise: 0, id: null, val: null, class: 'log-highlight' },
+                    a2: { promise: 0, id: null, val: null, class: 'log-highlight' },
+                    a3: { promise: 0, id: null, val: null, class: '' }
+                },
+                {
+                    log: 'Step 2: A1 and A2 receive `Prepare(100)`. Since 100 > 0, they reply `Promise(100)` to P1.',
+                    p1: { state: 'Preparing (ID 100)', class: '' },
+                    p2: { state: 'Idle', class: '' },
+                    a1: { promise: 100, id: null, val: null, class: 'border-blue-300 bg-blue-50' },
+                    a2: { promise: 100, id: null, val: null, class: 'border-blue-300 bg-blue-50' },
+                    a3: { promise: 0, id: null, val: null, class: '' }
+                },
+                {
+                    log: 'Step 3: P1 CRASHES. It received its promises but dies before sending the `Accept` message.',
+                    p1: { state: 'CRASHED', class: 'crashed' },
+                    p2: { state: 'Idle', class: '' },
+                    a1: { promise: 100, id: null, val: null, class: 'border-blue-300 bg-blue-50' },
+                    a2: { promise: 100, id: null, val: null, class: 'border-blue-300 bg-blue-50' },
+                    a3: { promise: 0, id: null, val: null, class: '' }
+                },
+                {
+                    log: 'Step 4: P2 wakes up. It picks a higher ID (200) and sends `Prepare(200)` to A2 and A3.',
+                    p1: { state: 'CRASHED', class: 'crashed' },
+                    p2: { state: 'Preparing (ID 200)', class: 'log-highlight' },
+                    a1: { promise: 100, id: null, val: null, class: 'border-blue-300 bg-blue-50' },
+                    a2: { promise: 100, id: null, val: null, class: 'log-highlight' },
+                    a3: { promise: 0, id: null, val: null, class: 'log-highlight' }
+                },
+                {
+                    log: 'Step 5: A2 sees 200 > 100. A3 sees 200 > 0. Both reply `Promise(200)` to P2. A2 *overwrites* its promise to P1.',
+                    p1: { state: 'CRASHED', class: 'crashed' },
+                    p2: { state: 'Preparing (ID 200)', class: '' },
+                    a1: { promise: 100, id: null, val: null, class: 'border-blue-300 bg-blue-50' },
+                    a2: { promise: 200, id: null, val: null, class: 'border-purple-300 bg-purple-50' },
+                    a3: { promise: 200, id: null, val: null, class: 'border-purple-300 bg-purple-50' }
+                },
+                {
+                    log: 'Step 6: P2 gets a majority (A2, A3). It sends `Accept(200, "Red")`. A2 and A3 accept it.',
+                    p1: { state: 'CRASHED', class: 'crashed' },
+                    p2: { state: 'Accepted!', class: '' },
+                    a1: { promise: 100, id: null, val: null, class: 'border-blue-300 bg-blue-50' },
+                    a2: { promise: 200, id: 200, val: '"Red"', class: 'log-highlight border-green-400 bg-green-100' },
+                    a3: { promise: 200, id: 200, val: '"Red"', class: 'log-highlight border-green-400 bg-green-100' }
+                },
+                {
+                    log: 'Step 7: CONSENSUS. The value "Red" is chosen. (Safety Check: If P1 reboots and sends `Accept(100, "Blue")`, A2 and A3 would reject it, as 100 < 200).',
+                    p1: { state: 'CRASHED', class: 'crashed' },
+                    p2: { state: 'Accepted!', class: '' },
+                    a1: { promise: 100, id: null, val: null, class: 'border-blue-300 bg-blue-50' },
+                    a2: { promise: 200, id: 200, val: '"Red"', class: 'border-green-400 bg-green-100' },
+                    a3: { promise: 200, id: 200, val: '"Red"', class: 'border-green-400 bg-green-100' }
+                }
+            ];
+
+            function updateSim(step) {
+                const s = simSteps[step];
+                simLog.textContent = s.log;
+                simLog.classList.add('log-highlight');
+                setTimeout(() => simLog.classList.remove('log-highlight'), 1000);
+
+                p1State.textContent = `State: ${s.p1.state}`;
+                p1Node.className = `node border-2 border-blue-300 bg-blue-50 rounded-lg p-4 ${s.p1.class}`;
+                
+                p2State.textContent = `State: ${s.p2.state}`;
+                p2Node.className = `node border-2 border-purple-300 bg-purple-50 rounded-lg p-4 ${s.p2.class}`;
+
+                a1Promise.textContent = `Promised ID: ${s.a1.promise}`;
+                a1Id.textContent = `Accepted ID: ${s.a1.id || 'null'}`;
+                a1Val.textContent = `Accepted Val: ${s.a1.val || 'null'}`;
+                document.getElementById('a1-node').className = `node border-2 border-gray-300 bg-gray-50 rounded-lg p-4 h-36 ${s.a1.class}`;
+
+                a2Promise.textContent = `Promised ID: ${s.a2.promise}`;
+                a2Id.textContent = `Accepted ID: ${s.a2.id || 'null'}`;
+                a2Val.textContent = `Accepted Val: ${s.a2.val || 'null'}`;
+                document.getElementById('a2-node').className = `node border-2 border-gray-300 bg-gray-50 rounded-lg p-4 h-36 ${s.a2.class}`;
+
+                a3Promise.textContent = `Promised ID: ${s.a3.promise}`;
+                a3Id.textContent = `Accepted ID: ${s.a3.id || 'null'}`;
+                a3Val.textContent = `Accepted Val: ${s.a3.val || 'null'}`;
+                document.getElementById('a3-node').className = `node border-2 border-gray-300 bg-gray-50 rounded-lg p-4 h-36 ${s.a3.class}`;
+
+                stepCounter.textContent = `Step ${step} / ${simSteps.length - 1}`;
+                prevBtn.disabled = step === 0;
+                nextBtn.disabled = step === simSteps.length - 1;
+            }
+
+            nextBtn.addEventListener('click', () => {
+                if (currentStep < simSteps.length - 1) {
+                    currentStep++;
+                    updateSim(currentStep);
+                }
+            });
+
+            prevBtn.addEventListener('click', () => {
+                if (currentStep > 0) {
+                    currentStep--;
+                    updateSim(currentStep);
+                }
+            });
+
+            updateSim(0);
+        });
+    </script>
+</body>
+</html>
